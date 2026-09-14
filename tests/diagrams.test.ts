@@ -5,10 +5,13 @@ import {
   fitLines,
   inlineTextOf,
   kindOf,
+  leftToRightOf,
+  pickLayout,
   mermaidBlocksOf,
   plainOf,
   renderOf,
   widthOf,
+  withoutPseudoStates,
   type Segment,
 } from '../hooks/diagrams.ts'
 
@@ -213,5 +216,68 @@ describe('inlineTextOf', () => {
     const text = `\`\`\`mermaid\n${FLOW}\n\`\`\`\n\`\`\`mermaid\n${SEQ}\n\`\`\``
     const out = inlineTextOf(text, mermaidBlocksOf(text), b => (b.source === FLOW ? ['[flow]'] : null))
     expect(out).toBe(`\`\`\`text\n[flow]\n\`\`\`\n\`\`\`mermaid\n${SEQ}\n\`\`\``)
+  })
+})
+
+describe('withoutPseudoStates', () => {
+  test('drops [*] transitions from a state diagram that has others', () => {
+    expect(withoutPseudoStates('stateDiagram-v2\n  [*] --> A\n  A --> B\n  B --> [*]')).toBe('stateDiagram-v2\n  A --> B')
+  })
+
+  test('keeps them when nothing else would remain, and other kinds alone', () => {
+    const only = 'stateDiagram-v2\n  [*] --> A\n  A --> [*]'
+    expect(withoutPseudoStates(only)).toBe(only)
+    expect(withoutPseudoStates(FLOW)).toBe(FLOW)
+  })
+})
+
+describe('leftToRightOf', () => {
+  test('turns a top-down flowchart sideways, whatever the header form', () => {
+    expect(leftToRightOf('flowchart TD\n  A --> B')).toBe('flowchart LR\n  A --> B')
+    expect(leftToRightOf('graph TB\n  A --> B')).toBe('graph LR\n  A --> B')
+    expect(leftToRightOf('%% note\nflowchart BT\n  A --> B')).toBe('%% note\nflowchart LR\n  A --> B')
+  })
+
+  test('adds a direction to a state diagram that has none', () => {
+    expect(leftToRightOf('stateDiagram-v2\n  A --> B')).toBe('stateDiagram-v2\n  direction LR\n  A --> B')
+    expect(leftToRightOf('stateDiagram\n  A --> B')).toBe('stateDiagram\n  direction LR\n  A --> B')
+  })
+
+  test('leaves a sideways source, a chosen direction, and other kinds alone', () => {
+    expect(leftToRightOf(FLOW)).toBeNull()
+    expect(leftToRightOf('flowchart RL\n  A --> B')).toBeNull()
+    expect(leftToRightOf('stateDiagram-v2\n  direction TB\n  A --> B')).toBeNull()
+    expect(leftToRightOf(SEQ)).toBeNull()
+    expect(leftToRightOf('classDiagram\n  A <|-- B')).toBeNull()
+  })
+})
+
+describe('pickLayout', () => {
+  const td = 'stateDiagram-v2\n  A --> B: go\n  B --> C: on'
+  const back = 'stateDiagram-v2\n  A --> B: go\n  B --> A: back'
+  const both = (source: string) => [renderOf(source, false), renderOf(leftToRightOf(source)!, false)] as const
+
+  test('takes the sideways layout when it fits and keeps every word', () => {
+    const [base, lr] = both(td)
+    const picked = pickLayout(base, lr, 100)
+    expect(picked).toBe(lr)
+    expect(('lines' in picked ? picked.lines : []).length).toBeLessThan(('lines' in base ? base.lines : []).length)
+  })
+
+  test('keeps the original when the sideways one loses an edge label', () => {
+    const [base, lr] = both(back)
+    expect(textOf('lines' in lr ? lr.lines : [])).not.toContain('back')
+    expect(pickLayout(base, lr, 100)).toBe(base)
+  })
+
+  test('keeps the original when the sideways one is both too wide and wider', () => {
+    const [base, lr] = both(td)
+    expect(pickLayout(base, lr, 20)).toBe(base)
+  })
+
+  test('an error on either side keeps the original', () => {
+    const [base] = both(td)
+    expect(pickLayout(base, { error: 'x' }, 100)).toBe(base)
+    expect(pickLayout({ error: 'x' }, base, 100)).toEqual({ error: 'x' })
   })
 })

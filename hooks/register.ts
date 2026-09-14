@@ -1,16 +1,28 @@
 import type { Register } from 'claude-code'
-import { ANSI_PALETTE, ansiLineOf, fitLines, inlineTextOf, mermaidBlocksOf, renderOf, type Rendered } from './diagrams.ts'
+import {
+  ANSI_PALETTE,
+  ansiLineOf,
+  fitLines,
+  inlineTextOf,
+  leftToRightOf,
+  mermaidBlocksOf,
+  pickLayout,
+  renderOf,
+  withoutPseudoStates,
+  type Rendered,
+} from './diagrams.ts'
 
 // Every ```mermaid block Claude writes is drawn as box art where the fence
-// was, in the transcript. /mermaid sets the glyph set and the colours.
+// was, in the transcript. /mermaid sets the glyph set, the colours and
+// whether top-down diagrams may be laid out sideways.
 
 const COMMAND = 'mermaid'
 const PREFS_KEY = 'prefs'
 // the transcript's code block has a gutter and margins the art must clear
 const INLINE_MARGIN = 6
 
-type Prefs = { ascii: boolean; color: boolean }
-const DEFAULT_PREFS: Prefs = { ascii: false, color: true }
+type Prefs = { ascii: boolean; color: boolean; lr: boolean }
+const DEFAULT_PREFS: Prefs = { ascii: false, color: true, lr: true }
 
 let prefs: Prefs = DEFAULT_PREFS
 const cache = new Map<string, Rendered>()
@@ -27,10 +39,17 @@ const rendered = (source: string): Rendered => {
   return out
 }
 
+const drawn = (source: string, columns: number): Rendered => {
+  const prepared = withoutPseudoStates(source)
+  const base = rendered(prepared)
+  const sideways = prefs.lr ? leftToRightOf(prepared) : null
+  return sideways ? pickLayout(base, rendered(sideways), columns) : base
+}
+
 const onOff = (word: string): boolean | undefined =>
   word === 'on' || word === 'true' ? true : word === 'off' || word === 'false' ? false : undefined
 
-const status = () => `mermaid: ascii ${prefs.ascii ? 'on' : 'off'} · color ${prefs.color ? 'on' : 'off'}`
+const status = () => `mermaid: ascii ${prefs.ascii ? 'on' : 'off'} · color ${prefs.color ? 'on' : 'off'} · lr ${prefs.lr ? 'on' : 'off'}`
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
@@ -40,8 +59,8 @@ export const register: Register = on => {
     await $.command
       .register({
         name: COMMAND,
-        description: 'Mermaid diagrams drawn in the transcript: ascii|color on|off, reset (claude-mermaid)',
-        argumentHint: '[ascii|color on|off | reset]',
+        description: 'Mermaid diagrams drawn in the transcript: ascii|color|lr on|off, reset (claude-mermaid)',
+        argumentHint: '[ascii|color|lr on|off | reset]',
         immediate: true,
       })
       .catch(err => $.ui.log(`mermaid: /${COMMAND} not registered: ${err}`))
@@ -55,9 +74,10 @@ export const register: Register = on => {
     // colours ride on ANSI escapes in the drawn code block; only the terminal reads them
     const palette = prefs.color && e.surface === 'terminal' ? ANSI_PALETTE : null
     const text = inlineTextOf(e.props.text, blocks, block => {
-      const art = rendered(block.source)
+      const room = columns - block.indent.length
+      const art = drawn(block.source, room)
       if (!('lines' in art)) return null
-      const fit = fitLines(art.lines, columns - block.indent.length)
+      const fit = fitLines(art.lines, room)
       const lines = fit.lines.map(line => ansiLineOf(line, palette))
       if (fit.overflow > 0) lines.push(ansiLineOf([{ text: `… ${fit.overflow} columns cut · widen the terminal`, role: 'line' }], palette))
       return lines
@@ -77,13 +97,17 @@ export const register: Register = on => {
       await save()
       return { text: status() }
     }
-    if (word === 'ascii' || word === 'color') {
+    if (word === 'ascii' || word === 'color' || word === 'lr') {
       const flag = onOff(value)
       prefs = { ...prefs, [word]: flag ?? !prefs[word] }
       await save()
-      const why = { ascii: 'plain ASCII art', color: 'borders, lines and arrows coloured' }[word]
+      const why = {
+        ascii: 'plain ASCII art',
+        color: 'borders, lines and arrows coloured',
+        lr: 'top-down flowcharts and state diagrams laid out left to right when nothing is lost',
+      }[word]
       return { text: `mermaid ${word} ${prefs[word] ? 'on' : 'off'} · ${why}` }
     }
-    return { text: `${status()} · /mermaid ascii|color on|off · reset` }
+    return { text: `${status()} · /mermaid ascii|color|lr on|off · reset` }
   })
 }

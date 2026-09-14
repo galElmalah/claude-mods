@@ -83,6 +83,48 @@ export const kindOf = (source: string): string => {
 // a source past this is not drawn: the layout is quadratic in places
 export const MAX_SOURCE_CHARS = 12_000
 
+// the renderer draws a state diagram's `[*]` start and end as an empty
+// corner-dotted box; a diagram with other transitions reads better without
+export const withoutPseudoStates = (source: string): string => {
+  if (kindOf(source) !== 'state') return source
+  const kept = source.split('\n').filter(line => !line.includes('[*]'))
+  return kept.some(line => line.includes('-->')) ? kept.join('\n') : source
+}
+
+// Rows are dear in a terminal and columns are cheap: a top-down flowchart or
+// state diagram laid out left to right is a fraction of the height. Null
+// when the source already picks a sideways direction, or the kind ignores one
+export const leftToRightOf = (source: string): string | null => {
+  const kind = kindOf(source)
+  if (kind === 'flowchart') {
+    const header = /^(\s*(?:flowchart|graph))(?:\s+(TD|TB|BT|LR|RL))?\b([^\n]*)$/im.exec(source)
+    if (!header || header[2] === 'LR' || header[2] === 'RL') return null
+    return source.replace(header[0], `${header[1]} LR${header[3]}`)
+  }
+  if (kind === 'state') {
+    if (/^\s*direction\s+/im.test(source)) return null
+    return source.replace(/^([^\n]*stateDiagram[^\n]*)$/im, '$1\n  direction LR')
+  }
+  return null
+}
+
+const tokensOf = (lines: readonly (readonly Segment[])[]): Map<string, number> => {
+  const out = new Map<string, number>()
+  for (const line of lines) for (const token of plainOf(line).match(/[\p{L}\p{N}_+#-]+/gu) ?? []) out.set(token, (out.get(token) ?? 0) + 1)
+  return out
+}
+
+// the sideways layout wins when every word of the original survives (the
+// renderer can overwrite the label of an edge that runs back the other way)
+// and it fits, or is at least no wider than the original
+export const pickLayout = (base: Rendered, sideways: Rendered, columns: number): Rendered => {
+  if (!('lines' in base) || !('lines' in sideways)) return base
+  const have = tokensOf(sideways.lines)
+  for (const [token, count] of tokensOf(base.lines)) if ((have.get(token) ?? 0) < count) return base
+  const width = widthOf(sideways.lines)
+  return width <= columns || width <= widthOf(base.lines) ? sideways : base
+}
+
 // The renderer colours by role but only emits ANSI. Rendering in truecolor
 // against a theme of sentinel colours (#00000N, N the role's index) turns
 // each escape back into the role it stood for, with no fork of the renderer.

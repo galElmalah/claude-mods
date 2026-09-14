@@ -18,7 +18,10 @@ screen — no pane, no buttons.
 ```
 
 Flowcharts, state, sequence, class and ER diagrams and xy charts are drawn;
-other kinds (gantt, pie, mindmap, …) keep their fence.
+other kinds (gantt, pie, mindmap, …) keep their fence. A top-down flowchart
+or state diagram is laid out left to right when that fits and loses nothing
+(rows are dear in a terminal: 5 rows instead of 30), and a state diagram's
+`[*]` start and end, which the renderer draws as empty boxes, are left out.
 
 A mod: a plugin built on Claude Code **function hooks**, TypeScript that runs
 inside Claude Code's own process. Early access, so it needs the environment
@@ -66,6 +69,7 @@ variable below and the API can change between releases.
 | `/mermaid` | shows the current settings |
 | `/mermaid ascii on\|off` | plain `+--|` art instead of box-drawing glyphs (default off) |
 | `/mermaid color on\|off` | borders cyan, arrows yellow, lines dim (default on) |
+| `/mermaid lr on\|off` | lay top-down flowcharts and state diagrams out left to right when nothing is lost (default on) |
 | `/mermaid reset` | the defaults again |
 
 A setting redraws the diagrams already on screen. Settings are kept in the
@@ -77,8 +81,10 @@ plugin's store across sessions.
   `AssistantMessage` to swap each closed mermaid fence for a text fence of its
   art (ANSI-coloured, so the transcript's code block draws the colours), and
   `command.run` for `/mermaid`.
-- `hooks/diagrams.ts` is the pure part: finding fences, rendering, fitting
-  to a width, serializing. `bun test` covers it.
+- `hooks/diagrams.ts` is the pure part: finding fences, rendering, choosing
+  the sideways layout (kept only when every word of the top-down render
+  survives, since the renderer can overwrite the label of an edge that runs
+  back the other way), fitting to a width, serializing. `bun test` covers it.
 - `hooks/vendor/mermaid-ascii.js` is [beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid)'s
   ASCII renderer bundled by `scripts/build-vendor.mjs` (hooks modules run
   with no Node and cannot import packages). The renderer only emits ANSI, so
@@ -116,7 +122,7 @@ plugin loaded from the checkout with `--plugin-dir`. Each test sends a
 prompt, waits for the screen to show a thing, and asserts on the captured
 text, with `-e` where colour matters. It covers every drawn kind, colours,
 two diagrams in one reply, an undrawn kind, the dense graph that used to
-hang, a fence inside a list item, every `/mermaid` form, and a terminal too
+hang, a fence inside a list item, the sideways layout, every `/mermaid` form, and a terminal too
 narrow for the art. Needs `tmux` and `claude` on PATH, and the checkout to
 be a folder Claude Code trusts; skipped otherwise. About 10 s.
 

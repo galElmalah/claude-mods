@@ -11,6 +11,7 @@ const SOURCES = {
   state: 'stateDiagram-v2\n  [*] --> Idle\n  Idle --> Working: prompt\n  Working --> Idle: reply\n  Working --> Failed: error',
   class: 'classDiagram\n  class Animal {\n    +String name\n    +speak()\n  }\n  Animal <|-- Dog\n  Animal <|-- Cat',
   er: 'erDiagram\n  USER ||--o{ SESSION : has\n  SESSION ||--|{ MESSAGE : contains',
+  linear: 'stateDiagram-v2\n  [*] --> Idle\n  Idle --> Working: prompt\n  Working --> Done: reply\n  Done --> [*]',
   gantt: 'gantt\n  title Release\n  section Build\n  compile :a1, 2024-01-01, 1d',
   dense: 'flowchart TD\n' + Array.from({ length: 6 }, (_, i) => `  N${i} --> N${(i + 1) % 6}\n  N${i} --> N${(i * 7 + 3) % 6}`).join('\n'),
   wide: 'flowchart LR\n' + Array.from({ length: 5 }, (_, i) => `  S${i}[Stage number ${i} of the pipeline] --> S${i + 1}[Stage number ${i + 1} of the pipeline]`).join('\n'),
@@ -23,6 +24,7 @@ const FIXTURES = [
   { prompt: 'e2e class please', reply: replyWith('A class diagram follows.', SOURCES.class) },
   { prompt: 'e2e er please', reply: replyWith('An ER diagram follows.', SOURCES.er) },
   { prompt: 'e2e two please', reply: replyWith('Two at once.', SOURCES.flow, SOURCES.er) + '\nBOTH-DRAWN\n' },
+  { prompt: 'e2e linear please', reply: replyWith('A linear state diagram follows.', SOURCES.linear) },
   { prompt: 'e2e gantt please', reply: replyWith('A gantt chart follows.', SOURCES.gantt) },
   { prompt: 'e2e dense please', reply: replyWith('A dense graph follows.', SOURCES.dense) + '\nDENSE-DONE\n' },
   { prompt: 'e2e wide please', reply: replyWith('A wide graph follows.', SOURCES.wide) },
@@ -60,7 +62,7 @@ describe.skipIf(!ready)('claude-mermaid in Claude Code', () => {
   }
 
   test('/mermaid reset puts the preferences back, whatever an earlier session kept', async () => {
-    await command('reset', 'mermaid: ascii off · color on')
+    await command('reset', 'mermaid: ascii off · color on · lr on')
   }, TURN_MS)
 
   test('a reply without a diagram is left alone', async () => {
@@ -115,10 +117,33 @@ describe.skipIf(!ready)('claude-mermaid in Claude Code', () => {
   }, TURN_MS)
 
   test('/mermaid color off strips the colours, and on puts them back', async () => {
+    const cyanBox = /\x1b\[(36|38;5;\d+)m[^\x1b]*[┌│└]/
+    // the answer lands before the transcript's repaint ends: poll the colour, not the text
+    const settled = async (want: boolean) => {
+      const deadline = Date.now() + TURN_MS
+      while (cyanBox.test(s.screen(true)) !== want && Date.now() < deadline) await new Promise(r => setTimeout(r, 250))
+      return cyanBox.test(s.screen(true))
+    }
     await command('color off', 'mermaid color off · borders')
-    expect(s.screen(true)).not.toMatch(/\x1b\[(36|38;5;\d+)m[^\x1b]*[┌│└]/)
+    expect(await settled(false)).toBe(false)
     await command('color on', 'mermaid color on · borders')
-    expect(s.screen(true)).toMatch(/\x1b\[(36|38;5;\d+)m[^\x1b]*[┌│└]/)
+    expect(await settled(true)).toBe(true)
+  }, TURN_MS * 2)
+
+  test('a top-down state diagram is laid out sideways, its [*] states dropped', async () => {
+    const screen = await ask('e2e linear please', 'Done')
+    const row = screen.split('\n').find(line => line.includes('Idle'))!
+    expect(row).toContain('Working')
+    expect(row).toContain('Done')
+    // no corner-dotted pseudo-state box above the art (the status line has its own ●)
+    expect(screen.slice(0, screen.indexOf('Idle'))).not.toContain('●')
+  }, TURN_MS)
+
+  test('/mermaid lr off keeps the diagram top-down', async () => {
+    await command('lr off', 'mermaid lr off · top-down')
+    const row = s.screen().split('\n').find(line => line.includes('Working'))!
+    expect(row).not.toContain('Done')
+    await command('lr on', 'mermaid lr on · top-down')
   }, TURN_MS)
 
   test('a kind the renderer lacks keeps its fence', async () => {
