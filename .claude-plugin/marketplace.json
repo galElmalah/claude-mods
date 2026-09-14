@@ -1,0 +1,14 @@
+{
+  "name": "claude-mermaid",
+  "owner": {
+    "name": "Gal Elmalah"
+  },
+  "description": "Mods for Claude Code by Gal: mermaid diagrams drawn inline in the transcript.",
+  "plugins": [
+    {
+      "name": "claude-mermaid",
+      "source": "./",
+      "description": "Mermaid diagrams drawn as box art inline in the transcript."
+    }
+  ]
+}
