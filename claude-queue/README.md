@@ -22,7 +22,10 @@ prune while the turn runs. Enter alone is untouched: a line typed without
 Stock Claude Code delivers a mid-turn message *into* the turn, beside the
 next tool result, so the model reads it halfway through work it has not
 finished. A `/q` line is held instead: the turn ends on the thing it was
-asked, and your next thought starts a turn of its own.
+asked, and your next thought starts a turn of its own. A turn that ends with
+work still running in the background (subagents, a backgrounded shell) is a
+pause, not an end: the stack waits for the notification that wakes the
+session, and goes out once that turn ends with nothing left running.
 
 `[ ▶ ]` (and `/q now <n>`) is the way back in for the one that will not wait:
 the entry leaves the stack and rides the running turn's next tool result as
@@ -82,7 +85,7 @@ variable below and the API can change between releases.
 | `/q edit <n>` | takes it out and puts its text back in the prompt box |
 | `/q clear` | drops the lot |
 | `/q send` | sends now, when the session is idle |
-| `/q status` | `turn idle · 2 held · waiting` |
+| `/q status` | `turn idle · 2 held · waiting`, with `· 3 in the background` while the drain waits on those |
 
 `/q` runs while a turn is in flight, which is the only time the stack fills.
 The band does the same things under the mouse:
@@ -137,6 +140,12 @@ with `/plugin configure claude-queue`, or in settings.json:
   session is idle; the next `turn.complete` sends the next. A subagent's
   `turn.complete` carries an `agentId` and is ignored — it ends inside the
   session's own turn.
+- `classic.Stop` is where the engine says whether that ending is the work's
+  end: the classic Stop hook's input lists the session's in-flight background
+  tasks, and the module reads it as a function-hooks event. A count above
+  zero holds the drain — the band says `sent when the background work ends`
+  — until a later turn (the one the task's notification starts) ends with
+  the list empty. `[ send ]` and `/q send` go regardless.
 - `tool.call` is the steer route. `[ ▶ ]` moves the entry to a list of its
   own; the hook awaits `next(e)`, and on a main-loop call (no `e.agentId`)
   that was not denied it returns the object it got with the framed text

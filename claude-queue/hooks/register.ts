@@ -51,6 +51,8 @@ let editFocused = false
 let bandRequest: string | undefined
 /** read off /q: the classic renderer sends the band no mouse, so the band says how else */
 let fullscreen: boolean | undefined
+/** the engine's count of background work (subagents, shells, monitors) still running at the last Stop */
+let inFlight = 0
 
 const firstLine = (text: string) => text.trim().split('\n')[0]?.trim() ?? ''
 
@@ -71,13 +73,15 @@ const state = (): [word: string, moving: boolean] =>
       ? ['nothing held', false]
       : turnId
         ? ['sent when the turn ends', false]
-        : pending
-          ? ['going out', true]
-          : ['sending', true]
+        : inFlight > 0 && !pending
+          ? [`sent when the background work ends · ${inFlight} running`, false]
+          : pending
+            ? ['going out', true]
+            : ['sending', true]
 
 /** one line for a "it did not send" report: every flag the drain reads */
 const statusLine = () =>
-  `turn ${turnId ? 'running' : 'idle'} · ${stack.length} held${steer.length > 0 ? ` · ${steer.length} going into the turn` : ''} · ${pending && !turnId ? 'going out' : 'waiting'}`
+  `turn ${turnId ? 'running' : 'idle'}${inFlight > 0 ? ` · ${inFlight} in the background` : ''} · ${stack.length} held${steer.length > 0 ? ` · ${steer.length} going into the turn` : ''} · ${pending && !turnId ? 'going out' : 'waiting'}`
 
 const indexOfId = (id: string) => stack.findIndex(entry => entry.id === id)
 
@@ -387,9 +391,23 @@ export const register: Register = (on, options) => {
     drainedTurn = e.turnId
     // the turn called no tool after all: what was pushed into it leads the drain
     if (steer.length > 0) stack.unshift(...steer.splice(0))
+    // a turn that left work running in the background is a pause, not an end:
+    // the notification that wakes it starts the turn whose end drains
+    if (inFlight > 0) {
+      $.ui.invalidate('ui.render')
+      return r
+    }
     // every ending drains, an Esc included: what was typed was asked for
     send($)
     return r
+  })
+
+  // The engine's own list of what is still running in the background, on the
+  // classic Stop hook's input: the one place that says whether a turn's end
+  // is the work's end. Stop runs before turn.complete.
+  on('classic.Stop', async ($, e, next) => {
+    inFlight = e.background_tasks?.length ?? 0
+    return next(e)
   })
 
   // The steer route: a mid-turn message rides the next tool result's context,
@@ -490,6 +508,7 @@ export const register: Register = (on, options) => {
     stack.push({ id: `e${++counter}`, text: e.args.trim() })
     $.ui.invalidate('ui.render')
     if (turnId) return { text: `queue: held · ${stack.length} waiting · sent when the turn ends` }
+    if (inFlight > 0) return { text: `queue: held · ${stack.length} waiting · sent when the background work ends` }
     send($)
     return { text: `queue: nothing is running · sending${stack.length > 1 ? ` · ${stack.length} waiting` : ''}` }
   })
@@ -500,7 +519,7 @@ export const register: Register = (on, options) => {
     // our own count of the turn alone: `isWorking` reads false while a tool
     // runs under the fullscreen renderer, so it cannot clear `turnId`. Deferred
     // past this dispatch, from which a submit would be refused.
-    if (!turnId && !e.props.isWorking && !pending && failures < RETRIES) pending = $.clock.after(0, () => flush($))
+    if (!turnId && inFlight === 0 && !e.props.isWorking && !pending && failures < RETRIES) pending = $.clock.after(0, () => flush($))
     return bandOf($, e)
   })
 }

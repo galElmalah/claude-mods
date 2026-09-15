@@ -1,6 +1,6 @@
 {
   "name": "claude-queue",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "A prompt typed while Claude is working is held in a stack above the prompt instead of landing in the running turn, and sent once the turn ends. Reorder the stack, edit a row in place, send one first, remove one, flush the lot. Needs function hooks (early access) and an interactive terminal.",
   "author": {
     "name": "Gal Elmalah"

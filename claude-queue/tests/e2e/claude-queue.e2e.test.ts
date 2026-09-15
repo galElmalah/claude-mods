@@ -409,3 +409,53 @@ describe.skipIf(!ready)('claude-queue with joined on', () => {
     expect(screen.split('The claude-queue plugin sent a message').length - 1).toBe(1)
   }, TURN_MS)
 })
+
+// a turn that leaves work running in the background is a pause, not an end:
+// the stack waits for the notification that wakes the session, and drains
+// once that turn ends with nothing left running
+describe.skipIf(!ready)('claude-queue over background work', () => {
+  let s: Session
+  let dir: string
+
+  beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'claude-queue-'))
+    const settings = join(dir, 'settings.json')
+    writeFileSync(settings, JSON.stringify({ permissions: { allow: ['Bash(sleep:*)'] } }))
+    s = await startSession(
+      [
+        {
+          prompt: 'queue spawn token',
+          lead: long('SIERRA'),
+          tool: { name: 'Bash', arguments: { command: 'sleep 12', run_in_background: true } },
+          reply: 'Left it running. SIERRA-PAUSED',
+        },
+        // the engine wakes the session with the task's notification once the sleep ends
+        { prompt: 'task-notification', reply: 'It finished. SIERRA-WOKE' },
+        { prompt: 'queue after token', reply: 'After the work. AFTER-DONE' },
+      ],
+      { pluginDir: PLUGIN, latency: 80, chunkSize: 6, columns: 120, rows: 45, settings },
+    )
+  }, 60_000)
+
+  afterAll(async () => {
+    await s?.stop()
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  test('a held prompt waits for the background task, and goes out after the turn it wakes', async () => {
+    s.send('queue spawn token')
+    await s.waitFor('SIERRA-RUNNING', TURN_MS)
+    s.send('/q queue after token')
+    await s.waitFor('queued · 1 ·', TURN_MS)
+
+    const paused = stripAnsi(await s.waitFor('sent when the background work ends', TURN_MS))
+    expect(paused).toContain('SIERRA-PAUSED')
+    expect(paused).not.toContain('plugin sent a message')
+
+    const woke = stripAnsi(await s.waitFor('SIERRA-WOKE', TURN_MS))
+    expect(woke.indexOf('SIERRA-WOKE')).toBeLessThan(woke.indexOf('plugin sent a message') < 0 ? Infinity : woke.indexOf('plugin sent a message'))
+
+    const done = stripAnsi(await s.waitFor('AFTER-DONE', TURN_MS))
+    expect(done.indexOf('SIERRA-WOKE')).toBeLessThan(done.indexOf('queue after token', done.indexOf('SIERRA-PAUSED')))
+  }, TURN_MS * 2)
+})
