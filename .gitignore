@@ -1,4 +1,4 @@
 node_modules/
 .claude/types/
 .claude/worktrees/
-scripts/vendor-entry.ts
+claude-mermaid/scripts/vendor-entry.ts

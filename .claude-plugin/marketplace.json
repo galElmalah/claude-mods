@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "claude-mermaid",
-      "source": "./",
+      "source": "./claude-mermaid",
       "description": "Mermaid diagrams drawn as box art inline in the transcript."
     },
     {

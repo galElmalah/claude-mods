@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { hasClaude, hasTmux, startSession, stripAnsi, type Fixture, type Session } from '../../../tests/e2e/harness.ts'
+import { hasClaude, hasTmux, startSession, stripAnsi, type Fixture, type Session } from './harness.ts'
 
 // End to end: a real Claude Code in tmux, its replies scripted by aimock,
 // this plugin loaded from its folder. The replies are paced so a turn takes
