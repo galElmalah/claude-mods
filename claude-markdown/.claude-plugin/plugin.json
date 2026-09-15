@@ -1,6 +1,6 @@
 {
   "name": "claude-markdown",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Markdown viewer in Claude Code: /md <file> (or the View button on a .md Read/Write/Edit row) opens the file in a pane, drawn locally and at once; click lines, type notes, send them to the prompt box. Needs function hooks (early access) and an interactive terminal.",
   "author": {
     "name": "Gal Elmalah"
