@@ -54,15 +54,15 @@ variable below and the API can change between releases.
 2. Load the plugin from a clone:
 
    ```sh
-   git clone https://github.com/galElmalah/claude-mermaid
-   cd claude-mermaid
+   git clone https://github.com/galElmalah/claude-mods
+   cd claude-mods
    claude --plugin-dir claude-queue
    ```
 
    Or install it from the repository's marketplace, `claude-mods`:
 
    ```sh
-   claude plugin marketplace add galElmalah/claude-mermaid
+   claude plugin marketplace add galElmalah/claude-mods
    claude plugin install claude-queue@claude-mods
    ```
 

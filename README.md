@@ -1,3 +1,19 @@
+# claude-mods
+
+Mods for Claude Code: plugins built on **function hooks**, TypeScript that
+runs inside Claude Code's own process. The repository is a marketplace:
+
+```sh
+claude plugin marketplace add galElmalah/claude-mods
+```
+
+| mod | what it does | install |
+| --- | --- | --- |
+| [claude-mermaid](#claude-mermaid) | every ```` ```mermaid ```` block Claude writes is drawn as box art inline in the transcript | `claude plugin install claude-mermaid@claude-mods` |
+| [claude-queue](claude-queue/README.md) | `/q <text>` while Claude is working waits in a stack above the prompt and goes out when the turn ends | `claude plugin install claude-queue@claude-mods` |
+
+Both need Claude Code 2.1.270 or later with `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1`.
+
 # claude-mermaid
 
 Mermaid diagrams in Claude Code. Every ```` ```mermaid ```` block Claude writes
@@ -48,15 +64,15 @@ variable below and the API can change between releases.
    sets the variable for sessions started inside it):
 
    ```sh
-   git clone https://github.com/galElmalah/claude-mermaid
-   cd claude-mermaid
+   git clone https://github.com/galElmalah/claude-mods
+   cd claude-mods
    claude --plugin-dir .
    ```
 
    Or install it from the repo's marketplace, `claude-mods`:
 
    ```sh
-   claude plugin marketplace add galElmalah/claude-mermaid
+   claude plugin marketplace add galElmalah/claude-mods
    claude plugin install claude-mermaid@claude-mods
    ```
 
@@ -128,15 +144,6 @@ be a folder Claude Code trusts; skipped otherwise. About 10 s.
 
 Edits to `hooks/` hot-reload into a running `--plugin-dir` session. Start
 Claude with `--debug-file /tmp/mermaid.log` to see what the engine refused.
-
-## Also in this repository
-
-[**claude-queue**](claude-queue/README.md) — `/q <text>` while Claude is
-working holds the text in a stack drawn above the prompt box, and it goes out
-once the turn has ended, in order. Entries are reordered, pushed into the
-running turn, edited, removed or cleared, from `/q` or the band's buttons.
-Also at [galElmalah/claude-queue-plugin](https://github.com/galElmalah/claude-queue-plugin).
-Install with `claude plugin install claude-queue@claude-mods`.
 
 ## Limits
 
