@@ -1,5 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { LLMock } from '@copilotkit/aimock'
@@ -16,6 +18,10 @@ export type Fixture = {
   reply: string
   /** a tool the model calls first; `reply` is what it says once the result is back */
   tool?: { name: string; arguments: Record<string, unknown> }
+  /** streamed before the tool call, so a test has a turn to type into first */
+  lead?: string
+  /** a further condition on the request `reply` answers: the whole body, whatever its shape */
+  when?: (request: unknown) => boolean
 }
 
 export type Session = {
@@ -46,6 +52,88 @@ const matches = (screen: string, pattern: RegExp | string) => {
   return typeof pattern === 'string' ? plain.includes(pattern) : pattern.test(plain)
 }
 
+const textOf = (content: unknown): string =>
+  typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content.filter((block: any) => block?.type === 'text').map((block: any) => block.text ?? '').join('')
+      : ''
+
+// Claude Code hands a tool.call hook's `context` to the model as a `system`
+// message trailing the tool result, and aimock's Anthropic conversion keeps
+// only the user and assistant ones: a fixture's `when` would never see it.
+// Folding that text into the tool result it belongs to puts it where the model
+// reads it and where a predicate can look.
+const foldHookContext = (raw: string) => {
+  let body: any
+  try {
+    body = JSON.parse(raw)
+  } catch {
+    return raw
+  }
+  if (!Array.isArray(body?.messages)) return raw
+  const messages: any[] = []
+  let folded = false
+  for (const message of body.messages) {
+    const previous = messages[messages.length - 1]
+    const result =
+      message?.role === 'system' && Array.isArray(previous?.content)
+        ? [...previous.content].reverse().find((block: any) => block?.type === 'tool_result')
+        : undefined
+    if (!result) {
+      messages.push(message)
+      continue
+    }
+    const text = textOf(message.content)
+    if (Array.isArray(result.content)) result.content.push({ type: 'text', text })
+    else result.content = `${textOf(result.content)}\n${text}`
+    folded = true
+  }
+  return folded ? JSON.stringify({ ...body, messages }) : raw
+}
+
+/** the mock behind a proxy that folds hook context in on the way through */
+const startProxy = async (target: string) => {
+  const proxy = createServer((request, response) => {
+    const chunks: Buffer[] = []
+    request.on('data', chunk => chunks.push(chunk))
+    request.on('end', async () => {
+      const sent = Buffer.concat(chunks).toString('utf8')
+      const headers = Object.fromEntries(
+        Object.entries(request.headers).filter(
+          ([key, value]) => typeof value === 'string' && key !== 'content-length' && key !== 'host',
+        ),
+      ) as Record<string, string>
+      try {
+        const upstream = await fetch(new URL(request.url ?? '/', target), {
+          method: request.method,
+          headers,
+          body: sent === '' ? undefined : foldHookContext(sent),
+        })
+        response.writeHead(
+          upstream.status,
+          Object.fromEntries([...upstream.headers].filter(([key]) => key !== 'content-length' && key !== 'content-encoding')),
+        )
+        // written chunk by chunk: the mock's pacing is what makes a turn long
+        if (upstream.body) for await (const chunk of upstream.body as any) response.write(Buffer.from(chunk))
+        response.end()
+      } catch {
+        response.destroy()
+      }
+    })
+  })
+  await new Promise<void>(resolve => proxy.listen(0, '127.0.0.1', resolve))
+  const url = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`
+  return {
+    url,
+    stop: () =>
+      new Promise<void>(resolve => {
+        proxy.closeAllConnections?.()
+        proxy.close(() => resolve())
+      }),
+  }
+}
+
 export type SessionOptions = {
   columns?: number
   rows?: number
@@ -58,32 +146,37 @@ export type SessionOptions = {
   /** ms between streamed chunks of `chunkSize` characters; instant by default */
   latency?: number
   chunkSize?: number
+  /** a settings.json for the session (`--settings`), e.g. a plugin's `pluginConfigs` options */
+  settings?: string
 }
 
 export async function startSession(fixtures: Fixture[], options: SessionOptions = {}): Promise<Session> {
-  const { columns = 170, rows = 80, fullscreen = false, latency, chunkSize, pluginDir = REPO, cwd = REPO } = options
+  const { columns = 170, rows = 80, fullscreen = false, latency, chunkSize, pluginDir = REPO, cwd = REPO, settings } = options
   const mock = new LLMock({ port: 0, latency, chunkSize })
-  for (const { prompt, reply, tool } of fixtures) {
+  for (const { prompt, reply, tool, lead, when } of fixtures) {
+    const also = when ? { predicate: when } : {}
     if (!tool) {
-      mock.onMessage(prompt, { content: reply })
+      mock.on({ userMessage: prompt, ...also }, { content: reply })
       continue
     }
     // the first request of the prompt gets the call; the one carrying its result, the reply
-    mock.on({ userMessage: prompt, hasToolResult: false }, { toolCalls: [{ name: tool.name, arguments: JSON.stringify(tool.arguments) }] })
-    mock.on({ userMessage: prompt, hasToolResult: true }, { content: reply })
+    const call = { toolCalls: [{ name: tool.name, arguments: JSON.stringify(tool.arguments) }] }
+    mock.on({ userMessage: prompt, hasToolResult: false }, lead ? { content: lead, ...call } : call)
+    mock.on({ userMessage: prompt, hasToolResult: true, ...also }, { content: reply })
   }
   await mock.start()
+  const proxy = await startProxy(mock.url)
 
   const name = `mermaid-e2e-${process.pid}-${Date.now().toString(36)}`
   const debugLog = join(mkdtempSync(join(tmpdir(), 'mermaid-e2e-')), 'debug.log')
   const env = [
-    `ANTHROPIC_BASE_URL=${mock.url}`,
+    `ANTHROPIC_BASE_URL=${proxy.url}`,
     'ANTHROPIC_API_KEY=mock',
     'CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1',
     'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1',
     `CLAUDE_CODE_NO_FLICKER=${fullscreen ? '1' : '0'}`,
   ].join(' ')
-  const command = `${env} claude --plugin-dir ${pluginDir} --model claude-sonnet-5 --debug-file ${debugLog}`
+  const command = `${env} claude --plugin-dir ${pluginDir} --model claude-sonnet-5 --debug-file ${debugLog}${settings ? ` --settings ${settings}` : ''}`
   // the repository is the cwd: a folder Claude Code already trusts, so no dialog
   tmux('new-session', '-d', '-s', name, '-x', String(columns), '-y', String(rows), '-c', cwd, command)
 
@@ -142,6 +235,7 @@ export async function startSession(fixtures: Fixture[], options: SessionOptions 
       try {
         tmux('kill-session', '-t', name)
       } catch {}
+      await proxy.stop()
       await mock.stop()
       rmSync(dirname(debugLog), { recursive: true, force: true })
     },

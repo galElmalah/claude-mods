@@ -53,11 +53,11 @@ variable below and the API can change between releases.
    claude --plugin-dir .
    ```
 
-   Or install it, the repo being its own marketplace:
+   Or install it from the repo's marketplace, `claude-mods`:
 
    ```sh
    claude plugin marketplace add galElmalah/claude-mermaid
-   claude plugin install claude-mermaid@claude-mermaid
+   claude plugin install claude-mermaid@claude-mods
    ```
 
 3. Ask Claude for a diagram. It is drawn in the reply.
@@ -128,6 +128,15 @@ be a folder Claude Code trusts; skipped otherwise. About 10 s.
 
 Edits to `hooks/` hot-reload into a running `--plugin-dir` session. Start
 Claude with `--debug-file /tmp/mermaid.log` to see what the engine refused.
+
+## Also in this repository
+
+[**claude-queue**](claude-queue/README.md) — `/q <text>` while Claude is
+working holds the text in a stack drawn above the prompt box, and it goes out
+once the turn has ended, in order. Entries are reordered, pushed into the
+running turn, edited, removed or cleared, from `/q` or the band's buttons.
+Also at [galElmalah/claude-queue-plugin](https://github.com/galElmalah/claude-queue-plugin).
+Install with `claude plugin install claude-queue@claude-mods`.
 
 ## Limits
 
