@@ -47,6 +47,7 @@ describe.skipIf(!ready)('claude-markdown in Claude Code', () => {
         { prompt: 'e2e read please', reply: 'READ-DONE', tool: { name: 'Read', arguments: { file_path: file } } },
         { prompt: 'e2e plain please', reply: 'No file here, just words.' },
         { prompt: 'Notes on', reply: 'NOTES-RECEIVED' },
+        { prompt: 'e2e show please', reply: 'SHOWN', tool: { name: 'mcp__claude-markdown__view', arguments: { path: 'claude-markdown/tests/e2e/sample.tmp.md' } } },
       ],
       { fullscreen: true, columns: 200, rows: 45, pluginDir: PLUGIN },
     )
@@ -152,15 +153,24 @@ describe.skipIf(!ready)('claude-markdown in Claude Code', () => {
     await s.waitFor('md: closed')
     await s.waitForGone('• first item')
     s.send('e2e read please')
-    // the folded "Read 1 file" line draws while the call's PostToolUse hooks still run
-    const screen = stripAnsi(await s.waitFor('[ View sample.tmp.md ]'))
+    // the turn's end (the machine's own PostToolUse hooks may hold it) settles the layout
+    await s.waitFor('READ-DONE', 90_000)
+    const screen = stripAnsi(s.screen())
+    expect(screen).toContain('[ View sample.tmp.md ]')
     const line = screen.split('\n').findIndex(l => l.includes('[ View sample.tmp.md ]')) + 1
     const column = screen.split('\n')[line - 1]!.indexOf('[ View') + 3
     await s.mouse('down', column, line)
     await s.mouse('up', column, line)
     await s.waitFor('• first item with bold')
-    // the machine's own PostToolUse hooks may hold the turn for a while
-    await s.waitFor('READ-DONE', 90_000)
+  }, 120_000)
+
+  test('the model opens the pane itself through the view tool, with a relative path', async () => {
+    s.send('/md close')
+    await s.waitFor('md: closed')
+    await s.waitForGone('• first item')
+    s.send('e2e show please')
+    await s.waitFor('• first item with bold')
+    await s.waitFor('SHOWN', 90_000)
   }, 120_000)
 
   test('a reply that touches no file leaves the transcript alone', async () => {

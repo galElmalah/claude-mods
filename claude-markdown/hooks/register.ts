@@ -10,6 +10,9 @@ import type { ViewerMessage, ViewerProps } from './viewer.ts'
 // clicks. Notes made there come back here to be put in the prompt box.
 
 const COMMAND = 'md'
+/** the model's tool, `mcp__claude-markdown__view`: opens the pane on a file */
+const TOOL = 'view'
+const TOOL_FULL = `mcp__claude-markdown__${TOOL}`
 const PANE = 'markdown'
 const VIEWER = 'viewer'
 const LAST_KEY = 'last'
@@ -164,8 +167,18 @@ export const register: Register = on => {
         immediate: true,
       })
       .catch(err => $.ui.log(`md: /${COMMAND} not registered: ${err}`))
+    await $.tool
+      .register({
+        name: TOOL,
+        description:
+          'Open a markdown file in the markdown viewer pane beside the transcript, so the person can read it and leave line notes. Use when asked to show, open or display a .md file (or a doc, README, plan, spec written in markdown), or after writing one the person will want to read.',
+        inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'The markdown file, absolute or relative to the working directory' } }, required: ['path'] },
+      })
+      .catch(err => $.ui.log(`md: tool not registered: ${err}`))
     return r
   })
+
+
 
   on('command.run', { command: COMMAND }, async ($, e) => {
     const arg = e.args.trim()
@@ -230,8 +243,15 @@ export const register: Register = on => {
     return paths.length ? withViewButtons($, $.ui.resolve(e), tree, paths, e.requestId) : tree
   })
 
-  // the file Claude just wrote is the one on screen: redraw at once
+  // the model's own tool opens the pane; a Write or Edit of the file on
+  // screen redraws it at once
   on('tool.call', async ($, e, next) => {
+    if ((e.tool as string) === TOOL_FULL) {
+      const path = (e as { path?: unknown }).path
+      if (typeof path !== 'string' || !path) return { deny: 'md: a path is required' }
+      const text = await open($, resolvePath(await $.session.cwd(), path))
+      return text.startsWith('md: cannot') ? { deny: text } : { result: `${text}. The pane shows it now; the person may send notes on its lines.` }
+    }
     const r = await next(e)
     if (doc && isOpen && (e.tool === 'Write' || e.tool === 'Edit') && (e as { file_path?: unknown }).file_path === doc.path) await reload($)
     return r

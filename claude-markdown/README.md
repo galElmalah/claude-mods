@@ -41,6 +41,8 @@ opens as fast as a 60-line one.
   alone reopens the last one; `/md close` closes the pane.
 - **A `[ View x.md ]` button** under every Read, Write or Edit of a `.md`
   file in the transcript, folded reads included. Click it.
+- **A tool for Claude**, `mcp__claude-markdown__view({ path })`: ask
+  "show me the design doc" and Claude opens it in the pane itself.
 - **Live reload**: when Claude edits the file you are looking at, or
   anything else changes it on disk, the pane redraws within a second and
   keeps your place.
