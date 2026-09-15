@@ -78,6 +78,7 @@ variable below and the API can change between releases.
 | --- | --- |
 | `/q` | lists what is held, and ends with the status line |
 | `/q <text>` | holds `text` until the turn ends; sent at once when nothing runs |
+| `/q /<command>` | holds a slash command the same way, and runs it when its turn comes |
 | `/q up <n>` \| `down <n>` | moves entry `n` one place |
 | `/q mv <n> <m>` | moves entry `n` to position `m` |
 | `/q now <n>` | pushes it into the running turn at its next tool call, or sends it at once when nothing is running |
@@ -140,6 +141,10 @@ with `/plugin configure claude-queue`, or in settings.json:
   session is idle; the next `turn.complete` sends the next. A subagent's
   `turn.complete` carries an `agentId` and is ignored — it ends inside the
   session's own turn.
+- A held line that starts with `/` is run with `$.command.run` when its turn
+  comes, `/q /compact` for one: the engine refuses a prompt that begins with a
+  slash. Under `joined` the stack goes out in runs, up to each command, which
+  goes alone. A command that started no turn lets the rest go on at once.
 - `classic.Stop` is where the engine says whether that ending is the work's
   end: the classic Stop hook's input lists the session's in-flight background
   tasks, and the module reads it as a function-hooks event. A count above
@@ -221,7 +226,7 @@ scripted by [aimock](https://github.com/CopilotKit/aimock) and paced so a turn
 takes about fifteen seconds, which is the room the tests type into. It covers
 an idle prompt passing through, a plain line typed mid-turn left to the engine,
 one and two `/q` lines held over a turn and the order they come back in, `/q rm`, `/q edit`, `/q up`, `/q down`, `/q mv`,
-`/q now` on a text-only turn and on one that calls a tool (a fixture that
+a held `/context` run as a command with a line behind it, `/q now` on a text-only turn and on one that calls a tool (a fixture that
 answers only when the pushed text is in the request), `/q status`, the field
 a row's `[ edit ]` opens, clicks on `[ ✕ ]` and `[ ↓ ]`, a turn ended with Esc draining anyway, `joined`,
 and a held line waiting out a backgrounded shell and a background subagent.

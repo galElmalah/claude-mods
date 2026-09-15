@@ -26,6 +26,8 @@ const FIXTURES: Fixture[] = [
   { prompt: 'queue second token', reply: 'Second held. SECOND-DONE' },
   { prompt: 'queue longc token', reply: long('CHARLIE') },
   { prompt: 'queue longl token', reply: long('LIMA') },
+  { prompt: 'queue longm token', reply: long('MIKE') },
+  { prompt: 'queue after command token', reply: 'AFTER-COMMAND' },
   { prompt: 'queue typed token', reply: 'Typed via /q. TYPED-DONE' },
   { prompt: 'queue gone token', reply: 'Should never be asked. GONE-DONE' },
   { prompt: 'queue kept token', reply: 'Kept answer. KEPT-DONE' },
@@ -147,6 +149,27 @@ describe.skipIf(!ready)('claude-queue in Claude Code', () => {
     await s.waitFor('SECOND-DONE', TURN_MS)
     expect(rowOf('BRAVO-DONE')).toBeLessThan(rowOf('FIRST-DONE'))
     expect(rowOf('FIRST-DONE')).toBeLessThan(rowOf('SECOND-DONE'))
+  }, TURN_MS)
+
+  test('a held line that starts with a slash runs as a command when the turn ends', async () => {
+    s.send('queue longm token')
+    await s.waitFor('MIKE-RUNNING', TURN_MS)
+    s.send('/q /context')
+    await s.waitFor('queued · 1 · sent when the turn ends', TURN_MS)
+    s.send('/q queue after command token')
+    const band = stripAnsi(await s.waitFor('queued · 2 · sent when the turn ends', TURN_MS))
+    expect(band).toContain('/context')
+
+    await s.waitFor('MIKE-DONE', TURN_MS)
+    // the engine refuses a prompt that starts with a slash: this one ran as the
+    // command (its output is tall enough to scroll its own row off, so the
+    // engine's log is what says so), and the line behind it went on out
+    await s.waitFor('AFTER-COMMAND', TURN_MS)
+    expect(readFileSync(s.debugLog, 'utf8')).toContain('$.command.run (claude-queue): 8 chars queued')
+    expect(rowOf('AFTER-COMMAND')).toBeGreaterThan(rows().findIndex(line => line.includes('tokens')))
+    expect(plain()).not.toContain('did not go out')
+    expect(plain()).not.toContain('did not run')
+    expect(plain()).not.toMatch(BAND)
   }, TURN_MS)
 
   test('a line typed mid-turn without /q is the engine\'s to deliver, never the band\'s', async () => {

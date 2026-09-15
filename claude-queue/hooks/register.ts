@@ -104,8 +104,19 @@ const moveAt = (from: number, to: number) => {
   return true
 }
 
-/** the next prompt out: the first entry, or the whole stack under `joined` */
-const takeDue = (): Entry[] => (joined ? stack.splice(0) : stack.splice(0, 1))
+// the engine refuses a prompt that starts with a slash: the person meant a
+// command, and it is run as one when its turn comes
+const slash = (text: string): { command: string; args: string } | undefined => {
+  const match = /^\/(\S+)\s*([^]*)$/.exec(text)
+  return match ? { command: match[1]!, args: match[2]! } : undefined
+}
+
+/** the next prompt out: the first entry, or under `joined` the stack up to its first command */
+const takeDue = (): Entry[] => {
+  if (!joined || slash(stack[0]!.text)) return stack.splice(0, 1)
+  const upTo = stack.findIndex(entry => slash(entry.text))
+  return stack.splice(0, upTo < 0 ? stack.length : upTo)
+}
 
 // Synchronous up to the submit itself, so two sends landing together (a
 // turn's end and a press) cannot both take an entry: the second one sees
@@ -127,6 +138,19 @@ const flush = ($: EngineInterface) => {
   sentAt = Date.now()
   if (editing && indexOfId(editing.id) < 0) editing = null
   $.ui.invalidate('ui.render')
+  const run = slash(going[0]!.text)
+  if (run) {
+    $.command
+      .run(run)
+      // an unknown name, or one refused: nothing a retry would change
+      .catch(err => $.ui.log(`queue: /${run.command} did not run: ${err}`))
+      // a turn the command started drains at its end; none started leaves the rest to go now
+      .then(() => {
+        failures = 0
+        if (stack.length > 0 && !turnId) send($)
+      })
+    return
+  }
   $.prompt
     .submit({ text: going.map(entry => entry.text).join('\n\n') })
     .then(() => void (failures = 0))
