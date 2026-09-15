@@ -19,6 +19,9 @@ const LAST_KEY = 'last'
 /** rows handed to the viewer at once; it asks again near the edge */
 const WINDOW = 400
 const POLL_MS = 1000
+// rows the viewer takes above the prompt, where the pane grows to its tree
+// and so cannot tell us a height of its own
+const INLINE_ROWS = 24
 
 type Doc = {
   path: string
@@ -206,7 +209,9 @@ export const register: Register = on => {
     // the viewer's gutter (line numbers and a note mark) comes off the text width
     const width = Math.max(20, e.props.bodyColumns - gutterOf(doc) - 1)
     if (doc.width !== width) doc = { ...doc, width, rows: layout(doc.lines, width) }
-    viewerHeight = Math.max(4, e.props.scroll.bodyRows)
+    viewerHeight = e.props.placement === 'inline'
+      ? Math.min(INLINE_ROWS, doc.rows.length + 3)
+      : Math.max(4, e.props.scroll.bodyRows)
     // the viewer draws its own title and buttons: the pane's tree stays the
     // same while the person works, so the instance keeps the keyboard
     return Client({ key: VIEWER, module: './viewer.ts', props: viewerProps()! })

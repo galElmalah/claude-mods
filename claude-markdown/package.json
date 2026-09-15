@@ -1,6 +1,6 @@
 {
   "name": "claude-markdown",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "type": "module",
   "description": "Claude Code mod: a markdown viewer in its own pane, with notes you send back to Claude",
