@@ -223,7 +223,8 @@ an idle prompt passing through, a plain line typed mid-turn left to the engine,
 one and two `/q` lines held over a turn and the order they come back in, `/q rm`, `/q edit`, `/q up`, `/q down`, `/q mv`,
 `/q now` on a text-only turn and on one that calls a tool (a fixture that
 answers only when the pushed text is in the request), `/q status`, the field
-a row's `[ edit ]` opens, clicks on `[ ✕ ]` and `[ ↓ ]`, a turn ended with Esc draining anyway, and `joined`.
+a row's `[ edit ]` opens, clicks on `[ ✕ ]` and `[ ↓ ]`, a turn ended with Esc draining anyway, `joined`,
+and a held line waiting out a backgrounded shell and a background subagent.
 Needs `tmux` and `claude` on PATH, and the checkout to be a folder Claude Code
 trusts; skipped otherwise. About four minutes.
 

@@ -420,9 +420,19 @@ describe.skipIf(!ready)('claude-queue over background work', () => {
   beforeAll(async () => {
     dir = mkdtempSync(join(tmpdir(), 'claude-queue-'))
     const settings = join(dir, 'settings.json')
-    writeFileSync(settings, JSON.stringify({ permissions: { allow: ['Bash(sleep:*)'] } }))
+    // not `auto`: its classifier cannot answer against the mock, and blocks the spawn
+    writeFileSync(settings, JSON.stringify({ permissions: { defaultMode: 'acceptEdits', allow: ['Bash(sleep:*)', 'Agent'] } }))
     s = await startSession(
       [
+        {
+          prompt: 'queue agent token',
+          lead: long('ROMEO'),
+          tool: { name: 'Agent', arguments: { description: 'sub work', prompt: 'subtask romeo token', subagent_type: 'general-purpose', run_in_background: true } },
+          reply: 'Agent is off. ROMEO-PAUSED',
+        },
+        // the subagent's own turn, long enough to outlive the main one
+        { prompt: 'subtask romeo token', reply: long('SUBAGENT') },
+        { prompt: 'queue later token', reply: 'After the agent. LATER-DONE' },
         {
           prompt: 'queue spawn token',
           lead: long('SIERRA'),
@@ -430,7 +440,7 @@ describe.skipIf(!ready)('claude-queue over background work', () => {
           reply: 'Left it running. SIERRA-PAUSED',
         },
         // the engine wakes the session with the task's notification once the sleep ends
-        { prompt: 'task-notification', reply: 'It finished. SIERRA-WOKE' },
+        { prompt: 'task-notification', reply: 'It finished. WOKE-UP' },
         { prompt: 'queue after token', reply: 'After the work. AFTER-DONE' },
       ],
       { pluginDir: PLUGIN, latency: 80, chunkSize: 6, columns: 120, rows: 45, settings },
@@ -452,10 +462,27 @@ describe.skipIf(!ready)('claude-queue over background work', () => {
     expect(paused).toContain('SIERRA-PAUSED')
     expect(paused).not.toContain('plugin sent a message')
 
-    const woke = stripAnsi(await s.waitFor('SIERRA-WOKE', TURN_MS))
-    expect(woke.indexOf('SIERRA-WOKE')).toBeLessThan(woke.indexOf('plugin sent a message') < 0 ? Infinity : woke.indexOf('plugin sent a message'))
+    const woke = stripAnsi(await s.waitFor('WOKE-UP', TURN_MS))
+    expect(woke.indexOf('WOKE-UP')).toBeLessThan(woke.indexOf('plugin sent a message') < 0 ? Infinity : woke.indexOf('plugin sent a message'))
 
     const done = stripAnsi(await s.waitFor('AFTER-DONE', TURN_MS))
-    expect(done.indexOf('SIERRA-WOKE')).toBeLessThan(done.indexOf('queue after token', done.indexOf('SIERRA-PAUSED')))
+    expect(done.indexOf('WOKE-UP')).toBeLessThan(done.indexOf('queue after token', done.indexOf('SIERRA-PAUSED')))
+  }, TURN_MS * 2)
+
+  test('a held prompt waits for a background subagent too', async () => {
+    s.send('queue agent token')
+    await s.waitFor('ROMEO-RUNNING', TURN_MS)
+    s.send('/q queue later token')
+    await s.waitFor('queued · 1 ·', TURN_MS)
+
+    const paused = stripAnsi(await s.waitFor('sent when the background work ends · 1 running', TURN_MS))
+    expect(paused).toContain('ROMEO-PAUSED')
+    expect(paused.indexOf('plugin sent a message', paused.indexOf('ROMEO-PAUSED'))).toBe(-1)
+
+    const done = stripAnsi(await s.waitFor('LATER-DONE', TURN_MS))
+    const since = done.slice(done.indexOf('ROMEO-PAUSED'))
+    // the agent's report comes first, the held line after it
+    expect(since.indexOf('WOKE-UP')).toBeGreaterThan(-1)
+    expect(since.indexOf('WOKE-UP')).toBeLessThan(since.indexOf('queue later token'))
   }, TURN_MS * 2)
 })
