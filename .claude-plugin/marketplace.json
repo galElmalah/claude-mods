@@ -3,17 +3,12 @@
   "owner": {
     "name": "Gal Elmalah"
   },
-  "description": "Mods for Claude Code by Gal: mermaid diagrams drawn inline in the transcript; a markdown viewer pane with notes sent back to Claude.",
+  "description": "Mods for Claude Code by Gal: mermaid diagrams drawn inline in the transcript.",
   "plugins": [
     {
       "name": "claude-mermaid",
       "source": "./",
       "description": "Mermaid diagrams drawn as box art inline in the transcript."
-    },
-    {
-      "name": "claude-markdown",
-      "source": "./claude-markdown",
-      "description": "A markdown viewer in its own pane: /md <file> or the View button on .md tool rows; click lines, write notes, send them to the prompt box."
     }
   ]
 }

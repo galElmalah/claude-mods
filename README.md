@@ -129,15 +129,6 @@ be a folder Claude Code trusts; skipped otherwise. About 10 s.
 Edits to `hooks/` hot-reload into a running `--plugin-dir` session. Start
 Claude with `--debug-file /tmp/mermaid.log` to see what the engine refused.
 
-## Also in this repository
-
-[**claude-markdown**](claude-markdown/README.md) — a markdown viewer in a
-pane of its own: `/md <file>` (or the `[ View x.md ]` button under a Read,
-Write or Edit of a `.md` file) draws the file beside the transcript, mermaid
-fences included with this renderer; click lines, write notes, and send them
-to the prompt box with the lines quoted. Install with
-`claude plugin install claude-markdown@claude-mermaid`.
-
 ## Limits
 
 - Kinds beautiful-mermaid does not draw (gantt, pie, mindmap, gitGraph,
